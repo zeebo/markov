@@ -4,6 +4,8 @@ import (
 	"strings"
 	"rand"
 	"time"
+	"gob"
+	"os"
 )
 
 func choice(w []string) string {
@@ -62,7 +64,10 @@ func (m *Markov) Generate() string {
 		i++
 	}
 	
-	seed := choice(keys)
+	return m.GenerateFrom(choice(keys))
+}
+
+func (m *Markov) GenerateFrom(seed string) string {
 	generated := strings.Split(seed, " ", -1)
 	for {
 		key := grabKey(generated)
@@ -80,6 +85,36 @@ func (m *Markov) Generate() string {
 	}
 
 	return strings.Join(generated, " ")
+}
+
+func (m *Markov) Save(filename string) os.Error {
+	hnd, err := os.Create(filename)
+	defer hnd.Close()
+	if err != nil {
+		return err
+	}
+
+	encoder := gob.NewEncoder(hnd)
+	if err := encoder.Encode(m.data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *Markov) Load(filename string) os.Error {
+	hnd, err := os.Open(filename)
+	defer hnd.Close()
+	if err != nil {
+		return err
+	}
+
+	decoder := gob.NewDecoder(hnd)
+	if err := decoder.Decode(&m.data); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func init() {
