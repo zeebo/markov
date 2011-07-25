@@ -102,6 +102,10 @@ func (m *Markov) Save(filename string) os.Error {
         return err
     }
 
+    if err := encoder.Encode(m.seeds); err != nil {
+        return err
+    }
+
     return nil
 }
 
@@ -114,6 +118,10 @@ func (m *Markov) Load(filename string) os.Error {
 
     decoder := gob.NewDecoder(hnd)
     if err := decoder.Decode(&m.data); err != nil {
+        return err
+    }
+
+    if err := decoder.Decode(&m.seeds); err != nil {
         return err
     }
 
