@@ -1,133 +1,143 @@
 package markov
 
 import (
-	"strings"
+	"math"
 	"rand"
-	"time"
+	"io"
 	"gob"
 	"os"
 )
 
-func choice(w []string) string {
-	return w[rand.Intn(len(w))]
-}
-
-func hash(s1, s2 string) string {
-	return s1 + " " + s2
-}
-
-func secondWord(words string) string {
-	return strings.SplitN(words, " ", 1)[1]
-}
-
-func grabKey(list []string) string {
-	return hash(list[len(list)-2], list[len(list)-1])
-}
-
 type Markov struct {
-	data  map[string][]string
-	seeds []string
+	order int
+	data  map[string][]Token
 }
 
-func New() *Markov {
+func NewMarkov(order int) *Markov {
 	return &Markov{
-		data:  make(map[string][]string),
-		seeds: make([]string, 0),
+		order: order,
+		data:  make(map[string][]Token),
 	}
 }
 
-func (m *Markov) Analyze(corpus string) {
-	words := strings.Split(corpus, " ")
-	if len(words) == 1 {
-		return
+func NewMarkovFrom(r io.Reader) (*Markov, os.Error) {
+	dec := gob.NewDecoder(r)
+	m := &Markov{}
+
+	if err := dec.Decode(&m.order); err != nil {
+		return nil, err
 	}
-	m.AddSeed(words[0], words[1])
-	for i, first := range words[:len(words)-2] {
-		m.Add(first, words[i+1], words[i+2])
+	if err := dec.Decode(&m.data); err != nil {
+		return nil, err
 	}
-	m.Add(words[len(words)-2], words[len(words)-1], "")
+
+	return m, nil
 }
 
-func (m *Markov) AddSeed(w1, w2 string) {
-	m.seeds = append(m.seeds, hash(w1, w2))
-}
+func (m *Markov) Save(w io.Writer) os.Error {
+	enc := gob.NewEncoder(w)
 
-func (m *Markov) RandSeed() string {
-	return choice(m.seeds)
-}
-
-func (m *Markov) Add(w1, w2, word string) {
-	key := hash(w1, w2)
-	item, exists := m.data[key]
-	if !exists {
-		m.data[key] = make([]string, 0)
-		item = m.data[key]
+	if err := enc.Encode(m.order); err != nil {
+		return err
 	}
-	m.data[key] = append(item, word)
+	if err := enc.Encode(m.data); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (m *Markov) Generate() string {
-	return m.GenerateFrom(m.RandSeed())
+func (m *Markov) next(prefix Sentence) Token {
+	key := prefix[len(prefix)-m.order:].Hash()
+	if _, ex := m.data[key]; !ex {
+		return Token{"", tokenSentenceEndType}
+	}
+	//choose a random token
+	return m.data[key][rand.Intn(len(m.data[key]))]
 }
 
-func (m *Markov) GenerateFrom(seed string) string {
-	generated := strings.Split(seed, " ")
+func (m *Markov) score(s Sentence) float64 {
+	var score float64
+	for i := 0; i < len(s)-m.order; i++ {
+		score += m.scoreIndivdual(s[i:i+m.order], s[i+m.order])
+	}
+	score /= float64(len(s) + 7) //add 7 to penalize short sentences
+	return score
+}
+
+func (m *Markov) scoreIndivdual(prefix Sentence, suffix Token) float64 {
+	var num, denom float64
+	key := prefix.Hash()
+
+	if _, ex := m.data[key]; !ex {
+		return 0
+	}
+
+	denom = float64(len(m.data[key]))
+	for _, v := range m.data[key] {
+		if suffix.Equals(v) {
+			num++
+		}
+	}
+
+	return -1 * math.Log2(num/denom)
+}
+
+func (m *Markov) Analyze(s Sentence) {
+	for i := 0; i < len(s)-m.order; i++ {
+		pre, post := s[i:i+m.order], s[i+m.order]
+		m.insert(pre.Hash(), post)
+	}
+}
+
+func (m *Markov) AnalyzeFully(t *Tokenizer) {
 	for {
-		key := grabKey(generated)
-		words, exists := m.data[key]
-		if !exists {
+		sentence, err := t.Sentence()
+		if err != nil {
 			break
 		}
+		m.Analyze(sentence)
+	}
+}
 
-		word := choice(words)
-		if word == "" {
+func (m *Markov) insert(key string, val Token) {
+	if _, ex := m.data[key]; !ex {
+		m.data[key] = make([]Token, 0)
+	}
+	m.data[key] = append(m.data[key], val)
+}
+
+func (m *Markov) seed() Sentence {
+	seed := make([]Token, m.order)
+	for i := range seed {
+		seed[i] = Token{Type: tokenSentenceStartType}
+	}
+	return seed
+}
+
+func (m *Markov) Generate() Sentence {
+	seed := m.seed()
+	for {
+		next := m.next(seed)
+		seed = append(seed, next)
+		if next.Type == tokenSentenceEndType {
 			break
 		}
-
-		generated = append(generated, word)
 	}
-
-	return strings.Join(generated, " ")
+	return seed
 }
 
-func (m *Markov) Save(filename string) os.Error {
-	hnd, err := os.Create(filename)
-	defer hnd.Close()
-	if err != nil {
-		return err
+func (m *Markov) GenerateN(n int) Sentence {
+	var (
+		max       float64
+		temp, val Sentence
+	)
+	for i := 0; i < n; i++ {
+		temp = m.Generate()
+		if s := m.score(temp); s >= max {
+			max = s
+			val = temp
+		}
 	}
-
-	encoder := gob.NewEncoder(hnd)
-	if err := encoder.Encode(m.data); err != nil {
-		return err
-	}
-
-	if err := encoder.Encode(m.seeds); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (m *Markov) Load(filename string) os.Error {
-	hnd, err := os.Open(filename)
-	defer hnd.Close()
-	if err != nil {
-		return err
-	}
-
-	decoder := gob.NewDecoder(hnd)
-	if err := decoder.Decode(&m.data); err != nil {
-		return err
-	}
-
-	if err := decoder.Decode(&m.seeds); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func init() {
-	rand.Seed(time.Nanoseconds())
+	return val
 }
