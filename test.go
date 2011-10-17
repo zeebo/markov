@@ -1,27 +1,23 @@
 package main
 
 import (
-    "markov"
-    "io/ioutil"
-    "fmt"
-    "strings"
+	"markov"
+	"fmt"
+	"os"
 )
 
-func load(m *markov.Markov, file string) {
-    data, err := ioutil.ReadFile(file)
-    if err != nil {
-        panic(err)
-    }
-
-    chunks := strings.Split(string(data), "\n", -1)
-    for _, line := range chunks {
-        m.Analyze(line)
-    }
-}
-
 func main() {
-    m := markov.New()
-    load(m, "jeeves2.txt")
-    load(m, "hamlet2.txt")
-    fmt.Println(m.Generate())
+	r, err := os.Open("turk.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	t := markov.NewTokenizer(r)
+	for {
+		sentence, err := t.Sentence()
+		if err != nil {
+			break
+		}
+		fmt.Println(len(sentence), sentence)
+	}
 }
