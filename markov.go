@@ -1,11 +1,10 @@
 package markov
 
 import (
-	"math"
-	"rand"
+	"encoding/gob"
 	"io"
-	"gob"
-	"os"
+	"math"
+	"math/rand"
 )
 
 type Markov struct {
@@ -20,7 +19,7 @@ func NewMarkov(order int) *Markov {
 	}
 }
 
-func NewMarkovFrom(r io.Reader) (*Markov, os.Error) {
+func NewMarkovFrom(r io.Reader) (*Markov, error) {
 	dec := gob.NewDecoder(r)
 	m := &Markov{}
 
@@ -34,7 +33,7 @@ func NewMarkovFrom(r io.Reader) (*Markov, os.Error) {
 	return m, nil
 }
 
-func (m *Markov) Save(w io.Writer) os.Error {
+func (m *Markov) Save(w io.Writer) error {
 	enc := gob.NewEncoder(w)
 
 	if err := enc.Encode(m.order); err != nil {

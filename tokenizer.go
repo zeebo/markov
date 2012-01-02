@@ -1,14 +1,13 @@
 package markov
 
 import (
-	"os"
 	"bufio"
-	"io"
 	"bytes"
+	"io"
 	"strings"
 )
 
-type stateFn func(t *Tokenizer, to *Token) (stateFn, os.Error)
+type stateFn func(t *Tokenizer, to *Token) (stateFn, error)
 
 type Tokenizer struct {
 	r         *bufio.Reader
@@ -36,11 +35,11 @@ func NewTokenizerString(data string, order int) *Tokenizer {
 	}
 }
 
-func tokenizerEof(t *Tokenizer, to *Token) (stateFn, os.Error) {
-	return tokenizerEof, os.EOF
+func tokenizerEof(t *Tokenizer, to *Token) (stateFn, error) {
+	return tokenizerEof, io.EOF
 }
 
-func tokenizerStartOfSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
+func tokenizerStartOfSentence(t *Tokenizer, to *Token) (stateFn, error) {
 	t.startEmit++
 	to.Value = ""
 	to.Type = tokenSentenceStartType
@@ -52,7 +51,7 @@ func tokenizerStartOfSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
 	return tokenizerStartOfSentence, nil
 }
 
-func tokenizerEndOfSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
+func tokenizerEndOfSentence(t *Tokenizer, to *Token) (stateFn, error) {
 	to.Value = ""
 	to.Type = tokenSentenceEndType
 	if t.readerErr {
@@ -61,8 +60,8 @@ func tokenizerEndOfSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
 	return tokenizerStartOfSentence, nil
 }
 
-func tokenizerGrabSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
-	var err os.Error
+func tokenizerGrabSentence(t *Tokenizer, to *Token) (stateFn, error) {
+	var err error
 	t.sentence, err = t.r.ReadSlice('\n')
 	if err != nil {
 		t.readerErr = true
@@ -71,7 +70,7 @@ func tokenizerGrabSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
 	return tokenizerHasSentence(t, to)
 }
 
-func tokenizerHasSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
+func tokenizerHasSentence(t *Tokenizer, to *Token) (stateFn, error) {
 	next := bytes.IndexByte(t.sentence[t.p:], ' ')
 	if next == -1 {
 		to.Value = strings.TrimSpace(string(t.sentence[t.p:]))
@@ -85,15 +84,15 @@ func tokenizerHasSentence(t *Tokenizer, to *Token) (stateFn, os.Error) {
 	return tokenizerHasSentence, nil
 }
 
-func (t *Tokenizer) Next(to *Token) os.Error {
-	var err os.Error
+func (t *Tokenizer) Next(to *Token) error {
+	var err error
 	t.state, err = t.state(t, to)
 	return err
 }
 
-func (t *Tokenizer) Sentence() (Sentence, os.Error) {
+func (t *Tokenizer) Sentence() (Sentence, error) {
 	var (
-		err  os.Error
+		err  error
 		next Token
 	)
 	sentence := make([]Token, 0, t.order+2) //begin + 1 word + end
